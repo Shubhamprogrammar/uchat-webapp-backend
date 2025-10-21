@@ -27,7 +27,3 @@ It enables seamless one-on-one or group conversations with a clean, minimal UI.
 | Realtime | Socket.io / WebSockets |
 | Package Manager | npm |
 
----
-
-## 📁 Folder Structure
-
