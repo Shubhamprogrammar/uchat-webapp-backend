@@ -19,6 +19,10 @@ router.post("/signup", async (req, res) => {
 
         // Generate 6-digit OTP
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        
+        if (!/^\d{10}$/.test(mobile)) {
+            return res.status(400).json({ message: "Invalid mobile number" });
+        }
 
         // Save OTP
         await Otp.create({ mobile, otp });
@@ -63,7 +67,7 @@ router.post("/verify-otp", async (req, res) => {
                 dob
             });
 
-            await newUser.save();
+            await user.save();
             await Otp.deleteMany({ mobile }); // cleanup
 
             // res.json({ message: "User registered successfully", user: newUser });
@@ -97,7 +101,7 @@ router.post("/verify-otp", async (req, res) => {
 });
 
 // Update user details
-router.put("/:id",authoriseuser,async (req, res) => {
+router.put("/:id", authoriseuser, async (req, res) => {
     try {
         const { id } = req.params;
 
