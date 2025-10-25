@@ -91,4 +91,56 @@ router.get("/get-messages/:receiverId", authoriseuser, async (req, res) => {
   }
 });
 
+router.get("/chat-list", authoriseuser, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Step 1: Find all conversations that include this user
+    const conversations = await Conversation.find({
+      participants: userId,
+    }).sort({ updatedAt: -1 }); // most recent first
+
+    if (!conversations.length) {
+      return res.status(200).json({ chats: [] });
+    }
+
+    // Step 2: For each conversation, fetch the other user and last message
+    const chatList = await Promise.all(
+      conversations.map(async (conv) => {
+        // Identify the other participant
+        const otherUserId = conv.participants.find(
+          (id) => id.toString() !== userId
+        );
+
+        const otherUser = await User.findById(otherUserId).select("name _id");
+
+        // Fetch the latest message
+        const lastMessage = await Message.findOne({
+          conversationId: conv._id,
+        })
+          .sort({ createdAt: -1 })
+          .select("text messageType createdAt sender");
+
+        return {
+          conversationId: conv._id,
+          user: otherUser,
+          lastMessage: lastMessage
+            ? {
+                text: lastMessage.text || "Media",
+                messageType: lastMessage.messageType,
+                createdAt: lastMessage.createdAt,
+                sender: lastMessage.sender,
+              }
+            : null,
+        };
+      })
+    );
+
+    res.status(200).json({ chats: chatList });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 export default router;
