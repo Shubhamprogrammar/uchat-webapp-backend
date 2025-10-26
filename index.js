@@ -14,6 +14,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
+
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
     cors: {
@@ -49,6 +54,6 @@ io.on('connection', (socket) => {
 app.get('/',(req,res)=>{
     res.send("U-Chat is running successfully");
 })
-app.listen(PORT,()=>{
+httpServer.listen(PORT,()=>{
     console.log(`U-Chat Web App is listening at port http://localhost:${PORT}`);
 })
