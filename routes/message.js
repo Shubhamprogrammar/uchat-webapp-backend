@@ -1,7 +1,7 @@
-import express from "express";
-import Message from "../models/Message.js";
-import Conversation from "../models/Conversation.js";
-import User from "../models/User.js";
+const express = require("express");
+const Message = require("../models/Message.js");
+const Conversation = require("../models/Conversation.js");
+const User = require("../models/User.js");
 const authoriseuser = require("../middleware/authoriseuser");
 
 const router = express.Router();
@@ -12,6 +12,25 @@ router.post("/send-message", authoriseuser, async (req, res) => {
 
         if (!receiverId || !senderId || (!text && !mediaUrl)) {
             return res.status(400).json({ message: "Required fields missing" });
+        }
+
+        if (!receiverId || !mongoose.Types.ObjectId.isValid(receiverId)) {
+            return res.status(400).json({ message: "Invalid or missing receiverId" });
+        }
+
+        if (!senderId || !mongoose.Types.ObjectId.isValid(senderId)) {
+            return res.status(400).json({ message: "Invalid or missing senderId" });
+        }
+
+        // Validate message content
+        if ((!text || text.trim() === "") && (!mediaUrl || mediaUrl.trim() === "")) {
+            return res.status(400).json({ message: "Message must contain text or media" });
+        }
+
+        // Validate message type
+        const allowedTypes = ["text", "image", "file"];
+        if (messageType && !allowedTypes.includes(messageType)) {
+            return res.status(400).json({ message: "Invalid message type" });
         }
 
         // Find or create a conversation between sender and receiver

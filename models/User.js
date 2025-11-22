@@ -32,8 +32,16 @@ const UserSchema = new mongoose.Schema({
         required:true
     },
     last_seen:{
-        type:Date,
-        default:Date.now
+        type:String,
+        default:"Offline"
+    },
+    is_blocked:{
+        type:Boolean,
+        default:false
+    },
+    is_deleted:{
+        type:Boolean,
+        default:false
     }
 }, { timestamps: true });
 
