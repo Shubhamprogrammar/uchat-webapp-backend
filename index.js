@@ -1,5 +1,4 @@
 const express = require('express');
-const process = require('process');
 const cors = require("cors");
 const dotenv = require('dotenv');
 const path = require('path');
@@ -7,53 +6,86 @@ const connectToMongo = require('./models/config');
 const http = require('http');
 const { Server } = require('socket.io');
 
-connectToMongo();
 dotenv.config();
+connectToMongo();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Create HTTP server
+const httpServer = http.createServer(app);
+
+// Create Socket instance
+const io = new Server(httpServer, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
+
+// ✅ Store Online Users Globally
+global.onlineUsers = new Map();
+
+// Make io available inside routes
 app.use((req, res, next) => {
   req.io = io;
   next();
 });
 
-const httpServer = http.createServer(app);
-const io = new Server(httpServer, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
-});
+/* ------------ ROUTES ------------- */
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/message', require('./routes/message'));
+app.use('/api/admin', require('./routes/admin'));
 
 const PORT = process.env.PORT || 5000;
 
-// Listen for client connections
+/* ------------ SOCKET LOGIC ------------- */
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
 
-  socket.on('joinConversation', (conversationId) => {
-    socket.join(conversationId);
-    console.log(`User ${socket.id} joined conversation ${conversationId}`);
+  // When a user joins (from frontend)
+  socket.on("userOnline", (userId) => {
+    global.onlineUsers.set(userId, socket.id);
+    io.emit("onlineUsers", Array.from(onlineUsers.keys())); // Send updated list
   });
 
+  // Join conversation room
+  socket.on('joinConversation', (conversationId) => {
+    socket.join(conversationId);
+  });
+
+  // Private messaging
   socket.on('sendMessage', (data) => {
-    // Emit only to participants in the conversation
     io.to(data.conversationId).emit('receiveMessage', data);
   });
 
+  // Broadcast Announcements
+  socket.on("sendAnnouncement", (message) => {
+    io.emit("receiveAnnouncement", message);
+  });
+
+  // When user disconnects
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${socket.id}`);
+
+    // Remove offline user from map
+    for (let [userId, sockId] of onlineUsers.entries()) {
+      if (sockId === socket.id) {
+        onlineUsers.delete(userId);
+        break;
+      }
+    }
+
+    io.emit("onlineUsers", Array.from(onlineUsers.keys())); // update list
   });
 });
 
+app.get('/', (req, res) => {
+  res.send("U-Chat Backend Running Successfully ✅");
+});
 
-app.get('/',(req,res)=>{
-    res.send("U-Chat is running successfully");
-})
-httpServer.listen(PORT,()=>{
-    console.log(`U-Chat Web App is listening at port http://localhost:${PORT}`);
-})
+// Start server
+httpServer.listen(PORT, () => {
+  console.log(`🚀 Server running at http://localhost:${PORT}`);
+});
