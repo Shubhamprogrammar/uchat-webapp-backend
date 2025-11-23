@@ -252,4 +252,4 @@ router.delete("/delete-message/:messageId", authoriseuser, async (req, res) => {
     }
 });
 
-export default router;
+module.exports = router;
