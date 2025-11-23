@@ -10,12 +10,9 @@ require("dotenv").config();
 const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 
 // Signup and send OTP
-router.post("/signup", async (req, res) => {
+router.post("/send-otp", async (req, res) => {
     try {
         const { name, mobile, city, gender, state, dob } = req.body;
-
-        const existing = await User.findOne({ mobile });
-        if (existing) return res.status(400).json({ message: "Mobile number already registered" });
 
         // Generate 6-digit OTP
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -54,6 +51,30 @@ router.post("/verify-otp", async (req, res) => {
                 return res.status(400).json({ message: "User already registered, please login" });
             }
 
+            if (!name || typeof name !== "string" || name.trim().length < 2) {
+                return res.status(400).json({ message: "Please enter a valid name" });
+            }
+
+            if (!mobile || !/^[6-9]\d{9}$/.test(mobile)) {
+                return res.status(400).json({ message: "Please enter a valid 10-digit Indian mobile number" });
+            }
+
+            if (!city || typeof city !== "string" || city.trim().length < 2) {
+                return res.status(400).json({ message: "Please enter a valid city" });
+            }
+
+            if (!state || typeof state !== "string" || state.trim().length < 2) {
+                return res.status(400).json({ message: "Please enter a valid state" });
+            }
+
+            if (!gender || !["male", "female", "other"].includes(gender.toLowerCase())) {
+                return res.status(400).json({ message: "Gender must be Male, Female, or Other" });
+            }
+
+            if (!dob || isNaN(Date.parse(dob))) {
+                return res.status(400).json({ message: "Please enter a valid date of birth (YYYY-MM-DD)" });
+            }
+
             user = new User({
                 name,
                 mobile,
@@ -63,10 +84,8 @@ router.post("/verify-otp", async (req, res) => {
                 dob
             });
 
-            await newUser.save();
+            await user.save();
             await Otp.deleteMany({ mobile }); // cleanup
-
-            // res.json({ message: "User registered successfully", user: newUser });
         }
         else if (label === 'login') {
             // Find user for login
@@ -97,7 +116,7 @@ router.post("/verify-otp", async (req, res) => {
 });
 
 // Update user details
-router.put("/:id",authoriseuser,async (req, res) => {
+router.put("/update/:id", authoriseuser, async (req, res) => {
     try {
         const { id } = req.params;
 
@@ -122,6 +141,51 @@ router.put("/:id",authoriseuser,async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: "Internal Server Error" });
+    }
+});
+
+// Update user status: block/unblock/delete/restore
+router.patch("/update-status", authoriseuser, async (req, res) => {
+    try {
+        const { userId, action } = req.body;
+
+        if (!userId || !action) {
+            return res.status(400).json({ message: "userId and action are required" });
+        }
+
+        let updateData = {};
+
+        switch (action) {
+            case "block":
+                updateData.is_blocked = true;
+                break;
+            case "unblock":
+                updateData.is_blocked = false;
+                break;
+            case "delete":
+                updateData.is_deleted = true;
+                break;
+            case "restore":
+                updateData.is_deleted = false;
+                break;
+            default:
+                return res.status(400).json({ message: "Invalid action" });
+        }
+
+        const updatedUser = await User.findByIdAndUpdate(userId, updateData, { new: true });
+
+        if (!updatedUser) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        return res.status(200).json({
+            message: `User ${action} successfully`,
+            user: updatedUser
+        });
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ message: "Server Error" });
     }
 });
 

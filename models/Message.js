@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+const mongoose = require("mongoose");
 
 const messageSchema = new mongoose.Schema({
   conversationId: { type: mongoose.Schema.Types.ObjectId, ref: "Conversation" },
@@ -10,4 +10,4 @@ const messageSchema = new mongoose.Schema({
   is_deleted: { type: Boolean, default: false },
 }, { timestamps: true });
 
-export default mongoose.model("Message", messageSchema);
+module.exports = mongoose.model("Message", messageSchema);
