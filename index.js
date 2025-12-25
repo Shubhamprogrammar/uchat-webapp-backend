@@ -24,7 +24,7 @@ const io = new Server(httpServer, {
   }
 });
 
-// ✅ Store Online Users Globally
+// Store Online Users Globally
 global.onlineUsers = new Map();
 
 // Make io available inside routes
@@ -82,10 +82,10 @@ io.on('connection', (socket) => {
 });
 
 app.get('/', (req, res) => {
-  res.send("U-Chat Backend Running Successfully ✅");
+  res.send("U-Chat Backend Running Successfully");
 });
 
 // Start server
 httpServer.listen(PORT, () => {
-  console.log(`🚀 Server running at http://localhost:${PORT}`);
+  console.log(`Server running at http://localhost:${PORT}`);
 });

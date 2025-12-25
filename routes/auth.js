@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
+const Place = require("../models/Place");
 const Otp = require("../models/Otp");
 const twilio = require("twilio");
 const jwt = require("jsonwebtoken");
@@ -37,6 +38,7 @@ router.post("/send-otp", async (req, res) => {
 //  Verify OTP and create user
 router.post("/verify-otp", async (req, res) => {
     try {
+        console.log(req.body);
         const { name, mobile, city, gender, state, dob, otp, label } = req.body;
 
         const validOtp = await Otp.findOne({ mobile, otp });
@@ -108,6 +110,7 @@ router.post("/verify-otp", async (req, res) => {
             user,
             token
         });
+        await Otp.deleteMany({ otp }); // cleanup
 
     } catch (err) {
         console.error(err);
@@ -187,6 +190,15 @@ router.patch("/update-status", authoriseuser, async (req, res) => {
         console.error(error);
         return res.status(500).json({ message: "Server Error" });
     }
+});
+
+router.get("/place", async (req, res) => {
+  try {
+    const places = await Place.find();
+    res.json({ success: true, places });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 });
 
 module.exports = router;
