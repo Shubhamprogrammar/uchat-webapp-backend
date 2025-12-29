@@ -13,8 +13,13 @@ const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TO
 // Signup and send OTP
 router.post("/send-otp", async (req, res) => {
     try {
-        const { name, mobile, gender, dob, username } = req.body;
-
+        const { name, mobile, gender, dob, username, label } = req.body;
+        if (label === "login") {
+            const user = await User.findOne({ mobile });
+            if (!user) {
+                return res.status(400).json({ message: "User not found, please signup first!" });
+            }
+        }
         // Generate 6-digit OTP
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
