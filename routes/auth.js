@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
+const Place = require("../models/Place");
 const Otp = require("../models/Otp");
 const twilio = require("twilio");
 const jwt = require("jsonwebtoken");
@@ -12,7 +13,7 @@ const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TO
 // Signup and send OTP
 router.post("/send-otp", async (req, res) => {
     try {
-        const { name, mobile, city, gender, state, dob } = req.body;
+        const { name, mobile, gender, dob, username } = req.body;
 
         // Generate 6-digit OTP
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -37,7 +38,7 @@ router.post("/send-otp", async (req, res) => {
 //  Verify OTP and create user
 router.post("/verify-otp", async (req, res) => {
     try {
-        const { name, mobile, city, gender, state, dob, otp, label } = req.body;
+        const { name, mobile, gender, dob, username, otp, label } = req.body;
 
         const validOtp = await Otp.findOne({ mobile, otp });
         if (!validOtp) return res.status(400).json({ message: "Invalid or expired OTP" });
@@ -51,20 +52,21 @@ router.post("/verify-otp", async (req, res) => {
                 return res.status(400).json({ message: "User already registered, please login" });
             }
 
+            const existingUsername = await User.findOne({ username });
+            if (existingUsername) {
+                return res.status(400).json({ message: "Username already taken, please choose another" });
+            }
+
             if (!name || typeof name !== "string" || name.trim().length < 2) {
                 return res.status(400).json({ message: "Please enter a valid name" });
             }
 
+            if (!username || typeof username !== "string" || username.trim().length < 3) {
+                return res.status(400).json({ message: "Please enter a valid username" });
+            }
+
             if (!mobile || !/^[6-9]\d{9}$/.test(mobile)) {
                 return res.status(400).json({ message: "Please enter a valid 10-digit Indian mobile number" });
-            }
-
-            if (!city || typeof city !== "string" || city.trim().length < 2) {
-                return res.status(400).json({ message: "Please enter a valid city" });
-            }
-
-            if (!state || typeof state !== "string" || state.trim().length < 2) {
-                return res.status(400).json({ message: "Please enter a valid state" });
             }
 
             if (!gender || !["male", "female", "other"].includes(gender.toLowerCase())) {
@@ -74,13 +76,19 @@ router.post("/verify-otp", async (req, res) => {
             if (!dob || isNaN(Date.parse(dob))) {
                 return res.status(400).json({ message: "Please enter a valid date of birth (YYYY-MM-DD)" });
             }
+            const dobDate = new Date(dob);
+            const today = new Date();
+            // Normalize today (remove time)
+            today.setHours(0, 0, 0, 0);
+            if (dobDate >= today) {
+                return res.status(400).json({message: "Date of birth must be earlier than today"});
+            }
 
             user = new User({
                 name,
                 mobile,
-                city,
+                username,
                 gender,
-                state,
                 dob
             });
 
@@ -108,6 +116,7 @@ router.post("/verify-otp", async (req, res) => {
             user,
             token
         });
+        await Otp.deleteMany({ otp }); // cleanup
 
     } catch (err) {
         console.error(err);
@@ -125,7 +134,7 @@ router.put("/update/:id", authoriseuser, async (req, res) => {
             return res.status(403).json({ message: "You can only update your own profile" });
         }
 
-        // Get only keys that exist in body (e.g. name, city)
+        // Get only keys that exist in body (e.g. name, username)
         const updates = req.body;
 
         const updatedUser = await User.findByIdAndUpdate(
