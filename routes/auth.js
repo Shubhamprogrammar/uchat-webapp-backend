@@ -13,8 +13,13 @@ const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TO
 // Signup and send OTP
 router.post("/send-otp", async (req, res) => {
     try {
-        const { name, mobile, gender, dob, username } = req.body;
-
+        const { name, mobile, gender, dob, username, label } = req.body;
+        if (label === "login") {
+            const user = await User.findOne({ mobile });
+            if (!user) {
+                return res.status(400).json({ message: "User not found, please signup first!" });
+            }
+        }
         // Generate 6-digit OTP
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -197,5 +202,30 @@ router.patch("/update-status", authoriseuser, async (req, res) => {
         return res.status(500).json({ message: "Server Error" });
     }
 });
+
+router.get('/user', authoriseuser, async (req,res)=>{
+    try{
+        const {gender} = req.query;
+        if(gender && !["male","female","other", "all"].includes(gender.toLowerCase())){
+            return res.status(400).json({message: "Invalid gender"});
+        }
+        if(gender && gender.toLowerCase() === "all"){
+            const users = await User.find({is_deleted: false}).select('username name');
+            return res.json(users);
+        }
+        else{
+        let filter = { is_deleted: false, is_blocked: false };
+        if (gender) {
+            filter.gender = gender;
+        }
+        const users = await User.find(filter).select('username name');
+        res.json(users);
+    }
+    }
+    catch(err){
+        console.error(err);
+        res.status(500).json({message: "Internal Server Error"});
+    }
+})
 
 module.exports = router;
