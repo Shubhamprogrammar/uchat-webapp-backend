@@ -203,4 +203,29 @@ router.patch("/update-status", authoriseuser, async (req, res) => {
     }
 });
 
+router.get('/user', authoriseuser, async (req,res)=>{
+    try{
+        const {gender} = req.query;
+        if(gender && !["male","female","other", "all"].includes(gender.toLowerCase())){
+            return res.status(400).json({message: "Invalid gender"});
+        }
+        if(gender && gender.toLowerCase() === "all"){
+            const users = await User.find({is_deleted: false}).select('username name');
+            return res.json(users);
+        }
+        else{
+        let filter = { is_deleted: false, is_blocked: false };
+        if (gender) {
+            filter.gender = gender;
+        }
+        const users = await User.find(filter).select('username name');
+        res.json(users);
+    }
+    }
+    catch(err){
+        console.error(err);
+        res.status(500).json({message: "Internal Server Error"});
+    }
+})
+
 module.exports = router;
