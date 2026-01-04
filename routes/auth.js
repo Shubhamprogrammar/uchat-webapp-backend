@@ -203,29 +203,41 @@ router.patch("/update-status", authoriseuser, async (req, res) => {
     }
 });
 
-router.get('/user', authoriseuser, async (req,res)=>{
-    try{
-        const {gender} = req.query;
-        if(gender && !["male","female","other", "all"].includes(gender.toLowerCase())){
-            return res.status(400).json({message: "Invalid gender"});
-        }
-        if(gender && gender.toLowerCase() === "all"){
-            const users = await User.find({is_deleted: false}).select('username name');
-            return res.json(users);
-        }
-        else{
-        let filter = { is_deleted: false, is_blocked: false };
-        if (gender) {
-            filter.gender = gender;
-        }
-        const users = await User.find(filter).select('username name');
-        res.json(users);
+router.get('/user', authoriseuser, async (req, res) => {
+  try {
+    const { gender, search } = req.query;
+    const loggedInUserId = req.user.id; // from middleware
+
+    let filter = {
+      is_deleted: false,
+      is_blocked: false,
+      _id: { $ne: loggedInUserId } // exclude self
+    };
+
+    // gender filter
+    if (gender && gender !== "all") {
+      if (!["male", "female", "other"].includes(gender.toLowerCase())) {
+        return res.status(400).json({ message: "Invalid gender" });
+      }
+      filter.gender = gender.toLowerCase();
     }
+
+    // search filter
+    if (search) {
+      filter.$or = [
+        { username: { $regex: search, $options: "i" } },
+        { name: { $regex: search, $options: "i" } }
+      ];
     }
-    catch(err){
-        console.error(err);
-        res.status(500).json({message: "Internal Server Error"});
-    }
-})
+
+    const users = await User.find(filter).select("username name gender");
+
+    res.json(users);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
 
 module.exports = router;
