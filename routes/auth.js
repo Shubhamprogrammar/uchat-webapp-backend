@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
+const Conversation = require("../models/Conversation");
 const Place = require("../models/Place");
 const Otp = require("../models/Otp");
 const twilio = require("twilio");
@@ -86,7 +87,7 @@ router.post("/verify-otp", async (req, res) => {
             // Normalize today (remove time)
             today.setHours(0, 0, 0, 0);
             if (dobDate >= today) {
-                return res.status(400).json({message: "Date of birth must be earlier than today"});
+                return res.status(400).json({ message: "Date of birth must be earlier than today" });
             }
 
             user = new User({
@@ -204,39 +205,86 @@ router.patch("/update-status", authoriseuser, async (req, res) => {
 });
 
 router.get('/user', authoriseuser, async (req, res) => {
-  try {
-    const { gender, search } = req.query;
-    const loggedInUserId = req.user.id; // from middleware
+    try {
+        const { gender, search } = req.query;
+        const loggedInUserId = req.user.id; // from middleware
 
-    let filter = {
-      is_deleted: false,
-      is_blocked: false,
-      _id: { $ne: loggedInUserId } // exclude self
-    };
+        const existingConversation = await Conversation.find({
+            participants: loggedInUserId
+        }).select("participants lastMessage");
 
-    // gender filter
-    if (gender && gender !== "all") {
-      if (!["male", "female", "other"].includes(gender.toLowerCase())) {
-        return res.status(400).json({ message: "Invalid gender" });
-      }
-      filter.gender = gender.toLowerCase();
+        console.log("existing conversation", existingConversation);
+        console.log("existing conversation", existingConversation.length);
+
+
+        if (Array.isArray(existingConversation) && existingConversation.length > 0)  {
+            const mapped = existingConversation.map(conv => {
+                const otherUserId = conv.participants.find(id => id.toString() !== loggedInUserId.toString());
+
+                return {
+                    userId: otherUserId,
+                    conversationId: conv._id,
+                    lastMessage: conv.lastMessage
+                };
+            })
+
+            const users = await User.find({
+                _id: { $in: mapped.map(m => m.userId) }
+            }).select("username name gender");
+
+            const searchRegex = search ? new RegExp(search, "i") : null;
+            let response = users
+                .map(user => {
+                    const matches = mapped.filter(
+                        m => m.userId.toString() === user._id.toString()
+                    );
+                    return matches.map(match => ({
+                        ...user.toObject(),
+                        conversationId: match.conversationId,
+                        lastMessage: match.lastMessage
+                    }));
+                })
+                .flat();
+
+            if (searchRegex) {
+                response = response.filter(user =>
+                    searchRegex.test(user.username) || searchRegex.test(user.name)
+                );
+            }
+
+            return res.json(response);
+        }
+        else {
+            let filter = {
+                is_deleted: false,
+                is_blocked: false,
+                _id: { $ne: loggedInUserId } // exclude self
+            };
+
+            // gender filter
+            if (gender && gender !== "all") {
+                if (!["male", "female", "other"].includes(gender.toLowerCase())) {
+                    return res.status(400).json({ message: "Invalid gender" });
+                }
+                filter.gender = gender.toLowerCase();
+            }
+
+            // search filter
+            if (search) {
+                filter.$or = [
+                    { username: { $regex: search, $options: "i" } },
+                    { name: { $regex: search, $options: "i" } }
+                ];
+            }
+            const users = await User.find(filter).select("username name gender").limit(10);
+            console.log("userData",users);
+            res.json(users);
+        }
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Internal Server Error" });
     }
-
-    // search filter
-    if (search) {
-      filter.$or = [
-        { username: { $regex: search, $options: "i" } },
-        { name: { $regex: search, $options: "i" } }
-      ];
-    }
-
-    const users = await User.find(filter).select("username name gender");
-
-    res.json(users);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Internal Server Error" });
-  }
 });
 
 
