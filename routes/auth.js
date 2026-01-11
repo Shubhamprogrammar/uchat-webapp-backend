@@ -106,8 +106,8 @@ router.post("/verify-otp", async (req, res) => {
             user = await User.findOne({ mobile });
             if (!user) return res.status(400).json({ message: "User not found, please signup" });
 
-            blockedUser = await User.findOne({ mobile, is_blocked: true });
-            if (blockedUser) return res.status(403).json({ message: "Your account has been blocked. Please contact support." });
+            deletedUser = await User.findOne({mobile, is_deleted: true});
+            if (deletedUser) return res.status(403).json({ message: "Your account has been deleted. Please contact support to restore your account." });    
         }
         else {
             res.status(400).json({ message: "Invalid label" })
