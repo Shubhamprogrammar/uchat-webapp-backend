@@ -105,6 +105,9 @@ router.post("/verify-otp", async (req, res) => {
             // Find user for login
             user = await User.findOne({ mobile });
             if (!user) return res.status(400).json({ message: "User not found, please signup" });
+
+            blockedUser = await User.findOne({ mobile, is_blocked: true });
+            if (blockedUser) return res.status(403).json({ message: "Your account has been blocked. Please contact support." });
         }
         else {
             res.status(400).json({ message: "Invalid label" })
@@ -131,20 +134,13 @@ router.post("/verify-otp", async (req, res) => {
 });
 
 // Update user details
-router.put("/update/:id", authoriseuser, async (req, res) => {
+router.put("/update-profile", authoriseuser, async (req, res) => {
     try {
-        const { id } = req.params;
-
-        // Only allow updating own profile
-        if (req.user._id.toString() !== id) {
-            return res.status(403).json({ message: "You can only update your own profile" });
-        }
-
+        const id = req.user.id;
         // Get only keys that exist in body (e.g. name, username)
         const updates = req.body;
-
         const updatedUser = await User.findByIdAndUpdate(
-            id,
+            {_id:id},
             { $set: updates },
             { new: true, runValidators: true }
         );
@@ -287,5 +283,18 @@ router.get('/user', authoriseuser, async (req, res) => {
     }
 });
 
+// GET /self-user - Get logged-in user details
+router.get('/self-user', authoriseuser, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("-password");
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.status(200).json(user);
+  } catch (error) {
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+});
 
 module.exports = router;
