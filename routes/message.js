@@ -6,21 +6,19 @@ const authoriseuser = require("../middleware/authoriseuser");
 
 const router = express.Router();
 
+const mongoose = require("mongoose");
+
+
+
+
 router.post("/send-message", authoriseuser, async (req, res) => {
     try {
-        const { receiverId, senderId, text, mediaUrl, messageType } = req.body;
+        const { receiverId, text, mediaUrl, messageType } = req.body;
 
-        if (!receiverId || !senderId || (!text && !mediaUrl)) {
+        if (!receiverId || (!text && !mediaUrl)) {
             return res.status(400).json({ message: "Required fields missing" });
         }
-
-        if (!receiverId || !mongoose.Types.ObjectId.isValid(receiverId)) {
-            return res.status(400).json({ message: "Invalid or missing receiverId" });
-        }
-
-        if (!senderId || !mongoose.Types.ObjectId.isValid(senderId)) {
-            return res.status(400).json({ message: "Invalid or missing senderId" });
-        }
+        const senderId = req.user.id;
 
         // Validate message content
         if ((!text || text.trim() === "") && (!mediaUrl || mediaUrl.trim() === "")) {
@@ -79,11 +77,17 @@ router.get("/get-messages/:receiverId", authoriseuser, async (req, res) => {
     try {
         const userId = req.user.id;
         const { receiverId } = req.params;
+        console.log("Receiver ID:", receiverId);
+        console.log("User ID:", userId);
+        if (!mongoose.Types.ObjectId.isValid(receiverId)) {
+            return res.status(400).json({ message: "Invalid receiverId" });
+        }
 
         // Find conversation between these two users
         const conversation = await Conversation.findOne({
             participants: { $all: [userId, receiverId] },
         });
+        console.log("Conversation:", conversation);
 
         if (!conversation) {
             return res.status(200).json({ messages: [], message: "No conversation found" });
@@ -91,8 +95,9 @@ router.get("/get-messages/:receiverId", authoriseuser, async (req, res) => {
 
         // Fetch messages in that conversation
         const messages = await Message.find({ conversationId: conversation._id, is_deleted: false })
-            .populate("sender", "name _id")
+        
             .sort({ createdAt: 1 });
+                console.log("Messages:", messages);
 
         res.status(200).json({
             conversationId: conversation._id,
