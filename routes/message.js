@@ -15,10 +15,12 @@ router.post("/send-message", authoriseuser, async (req, res) => {
     try {
         const { receiverId, text, mediaUrl, messageType } = req.body;
 
-        if (!receiverId || (!text && !mediaUrl)) {
+        const senderId = req.user.id;
+
+        if (!receiverId || !senderId || (!text && !mediaUrl)) {
             return res.status(400).json({ message: "Required fields missing" });
         }
-        const senderId = req.user.id;
+        
 
         // Validate message content
         if ((!text || text.trim() === "") && (!mediaUrl || mediaUrl.trim() === "")) {

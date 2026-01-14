@@ -204,6 +204,7 @@ router.get('/user', authoriseuser, async (req, res) => {
     try {
         const { gender, search } = req.query;
         const loggedInUserId = req.user.id; // from middleware
+        const io = req.io;
 
         const existingConversation = await Conversation.find({
             participants: loggedInUserId
@@ -247,7 +248,7 @@ router.get('/user', authoriseuser, async (req, res) => {
                     searchRegex.test(user.username) || searchRegex.test(user.name)
                 );
             }
-
+            io.to(loggedInUserId.toString()).emit("conversation_list", response);
             return res.json(response);
         }
         else {
@@ -274,6 +275,7 @@ router.get('/user', authoriseuser, async (req, res) => {
             }
             const users = await User.find(filter).select("username name gender").limit(10);
             console.log("userData",users);
+            io.to(loggedInUserId.toString()).emit("user_list", users);
             res.json(users);
         }
 

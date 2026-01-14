@@ -50,6 +50,10 @@ io.on('connection', (socket) => {
     io.emit("onlineUsers", Array.from(onlineUsers.keys())); // Send updated list
   });
 
+    socket.on("joinUser", (userId) => {
+    socket.join(userId);
+  });
+  
   // Join conversation room
   socket.on('joinConversation', (conversationId) => {
     socket.join(conversationId);
