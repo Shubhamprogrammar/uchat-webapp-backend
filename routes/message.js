@@ -16,12 +16,11 @@ router.post("/send-message", authoriseuser, async (req, res) => {
         const { receiverId, text, mediaUrl, messageType } = req.body;
 
         const senderId = req.user.id;
-
+        console.log("Receiver ID:", receiverId);
         if (!receiverId || !senderId || (!text && !mediaUrl)) {
             return res.status(400).json({ message: "Required fields missing" });
         }
         
-
         // Validate message content
         if ((!text || text.trim() === "") && (!mediaUrl || mediaUrl.trim() === "")) {
             return res.status(400).json({ message: "Message must contain text or media" });
@@ -49,6 +48,7 @@ router.post("/send-message", authoriseuser, async (req, res) => {
         const message = new Message({
             conversationId: conversation._id,
             sender: senderId,
+            receiver: receiverId,
             text,
             mediaUrl,
             messageType: messageType || "text",
@@ -79,8 +79,6 @@ router.get("/get-messages/:receiverId", authoriseuser, async (req, res) => {
     try {
         const userId = req.user.id;
         const { receiverId } = req.params;
-        console.log("Receiver ID:", receiverId);
-        console.log("User ID:", userId);
         if (!mongoose.Types.ObjectId.isValid(receiverId)) {
             return res.status(400).json({ message: "Invalid receiverId" });
         }
@@ -89,7 +87,6 @@ router.get("/get-messages/:receiverId", authoriseuser, async (req, res) => {
         const conversation = await Conversation.findOne({
             participants: { $all: [userId, receiverId] },
         });
-        console.log("Conversation:", conversation);
 
         if (!conversation) {
             return res.status(200).json({ messages: [], message: "No conversation found" });
@@ -99,7 +96,6 @@ router.get("/get-messages/:receiverId", authoriseuser, async (req, res) => {
         const messages = await Message.find({ conversationId: conversation._id, is_deleted: false })
         
             .sort({ createdAt: 1 });
-                console.log("Messages:", messages);
 
         res.status(200).json({
             conversationId: conversation._id,

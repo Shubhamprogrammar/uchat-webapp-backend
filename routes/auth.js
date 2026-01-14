@@ -11,6 +11,7 @@ require("dotenv").config();
 
 const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 
+
 // Signup and send OTP
 router.post("/send-otp", async (req, res) => {
     try {
@@ -106,8 +107,8 @@ router.post("/verify-otp", async (req, res) => {
             user = await User.findOne({ mobile });
             if (!user) return res.status(400).json({ message: "User not found, please signup" });
 
-            deletedUser = await User.findOne({mobile, is_deleted: true});
-            if (deletedUser) return res.status(403).json({ message: "Your account has been deleted. Please contact support to restore your account." });    
+            deletedUser = await User.findOne({ mobile, is_deleted: true });
+            if (deletedUser) return res.status(403).json({ message: "Your account has been deleted. Please contact support to restore your account." });
         }
         else {
             res.status(400).json({ message: "Invalid label" })
@@ -140,7 +141,7 @@ router.put("/update-profile", authoriseuser, async (req, res) => {
         // Get only keys that exist in body (e.g. name, username)
         const updates = req.body;
         const updatedUser = await User.findByIdAndUpdate(
-            {_id:id},
+            { _id: id },
             { $set: updates },
             { new: true, runValidators: true }
         );
@@ -159,6 +160,7 @@ router.put("/update-profile", authoriseuser, async (req, res) => {
 router.patch("/update-status", authoriseuser, async (req, res) => {
     try {
         const { userId, action } = req.body;
+        
 
         if (!userId || !action) {
             return res.status(400).json({ message: "userId and action are required" });
@@ -202,22 +204,31 @@ router.patch("/update-status", authoriseuser, async (req, res) => {
 
 router.get('/user', authoriseuser, async (req, res) => {
     try {
-        const { gender, search } = req.query;
+        const { search } = req.query;
+
+        console.log("Query Params:", req.query);
         const loggedInUserId = req.user.id; // from middleware
-        const io = req.io;
+        
+
+        const user = await User.findById(loggedInUserId).select("gender");
 
         const existingConversation = await Conversation.find({
             participants: loggedInUserId
         }).select("participants lastMessage");
 
-        console.log("existing conversation", existingConversation);
-        console.log("existing conversation", existingConversation.length);
-
-
-        if (Array.isArray(existingConversation) && existingConversation.length > 0)  {
+        if(search){
+            const searchRegex = search ? new RegExp(search, "i") : null;
+            const user = await User.find({ _id: { $ne: loggedInUserId }, is_deleted: false}).select("username name gender");
+                response = user.filter(user =>
+                    searchRegex.test(user.username) || searchRegex.test(user.name)
+                );
+                console.log("Filtered Users:", response);
+                return res.json(response);
+        }
+        if (Array.isArray(existingConversation) && existingConversation.length > 0) {
             const mapped = existingConversation.map(conv => {
                 const otherUserId = conv.participants.find(id => id.toString() !== loggedInUserId.toString());
-
+                console.log("Other User ID:", otherUserId);
                 return {
                     userId: otherUserId,
                     conversationId: conv._id,
@@ -228,8 +239,6 @@ router.get('/user', authoriseuser, async (req, res) => {
             const users = await User.find({
                 _id: { $in: mapped.map(m => m.userId) }
             }).select("username name gender");
-
-            const searchRegex = search ? new RegExp(search, "i") : null;
             let response = users
                 .map(user => {
                     const matches = mapped.filter(
@@ -237,46 +246,41 @@ router.get('/user', authoriseuser, async (req, res) => {
                     );
                     return matches.map(match => ({
                         ...user.toObject(),
+                        receiver: match.userId,
                         conversationId: match.conversationId,
                         lastMessage: match.lastMessage
                     }));
                 })
                 .flat();
-
-            if (searchRegex) {
-                response = response.filter(user =>
-                    searchRegex.test(user.username) || searchRegex.test(user.name)
-                );
-            }
-            io.to(loggedInUserId.toString()).emit("conversation_list", response);
+                if(req.io){
+            req.io.to(loggedInUserId.toString()).emit("onlineUsers", response);}
             return res.json(response);
         }
         else {
             let filter = {
                 is_deleted: false,
                 is_blocked: false,
+                gender:user.gender,
                 _id: { $ne: loggedInUserId } // exclude self
             };
 
-            // gender filter
-            if (gender && gender !== "all") {
-                if (!["male", "female", "other"].includes(gender.toLowerCase())) {
-                    return res.status(400).json({ message: "Invalid gender" });
-                }
-                filter.gender = gender.toLowerCase();
-            }
-
-            // search filter
-            if (search) {
-                filter.$or = [
-                    { username: { $regex: search, $options: "i" } },
-                    { name: { $regex: search, $options: "i" } }
-                ];
-            }
-            const users = await User.find(filter).select("username name gender").limit(10);
-            console.log("userData",users);
-            io.to(loggedInUserId.toString()).emit("user_list", users);
-            res.json(users);
+            // // search filter
+            // if (search) {
+            //     filter.$or = [
+            //         { username: { $regex: search, $options: "i" } },
+            //         { name: { $regex: search, $options: "i" } }
+            //     ];
+            // }
+            console.log("Filter for users:", filter);
+            const users = await User.find(filter).select("_id username name gender").limit(10);
+            // io.to(loggedInUserId.toString()).emit("user_list", users);
+            const updatedUsers = users.map(user => ({
+                ...user.toObject(),
+                receiver: user._id
+            }));
+            if(req.io){
+            req.io.to(loggedInUserId.toString()).emit("onlineUsers", updatedUsers);}
+            res.json(updatedUsers);
         }
 
     } catch (err) {
@@ -287,16 +291,16 @@ router.get('/user', authoriseuser, async (req, res) => {
 
 // GET /self-user - Get logged-in user details
 router.get('/self-user', authoriseuser, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id).select("-password");
+    try {
+        const user = await User.findById(req.user.id).select("-password");
 
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        res.status(200).json(user);
+    } catch (error) {
+        res.status(500).json({ message: "Internal Server Error" });
     }
-    res.status(200).json(user);
-  } catch (error) {
-    res.status(500).json({ message: "Internal Server Error" });
-  }
 });
 
 module.exports = router;

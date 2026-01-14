@@ -60,9 +60,9 @@ io.on('connection', (socket) => {
   });
 
   // Private messaging
-  socket.on('sendMessage', (data) => {
-    io.to(data.conversationId).emit('receiveMessage', data);
-  });
+  // socket.on('sendMessage', (data) => {
+  //   io.to(data.conversationId).emit('receiveMessage', data);
+  // });
 
   // Broadcast Announcements
   socket.on("sendAnnouncement", (message) => {
