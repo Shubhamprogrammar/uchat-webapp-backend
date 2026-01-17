@@ -32,10 +32,14 @@ router.post("/send-message", authoriseuser, async (req, res) => {
             return res.status(400).json({ message: "Invalid message type" });
         }
 
+        
+        
         // Find or create a conversation between sender and receiver
         let conversation = await Conversation.findOne({
             participants: { $all: [senderId, receiverId] },
         });
+
+        const isNewConversation = !conversation;
 
         if (!conversation) {
             conversation = new Conversation({
@@ -61,7 +65,15 @@ router.post("/send-message", authoriseuser, async (req, res) => {
 
         // Emit message via Socket.IO
         if (req.io) {
-            req.io.to(conversation._id.toString()).emit("receiveMessage", message);
+            if (isNewConversation) {
+                const receiverSocketId = global.onlineUsers.get(receiverId);
+
+                if (receiverSocketId) {
+                    req.io.to(receiverSocketId).emit("receiveMessage", message);
+                }
+            } else {
+                req.io.to(conversation._id.toString()).emit("receiveMessage", message);
+            }
         }
 
         res.status(200).json({
