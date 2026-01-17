@@ -252,8 +252,8 @@ router.get('/user', authoriseuser, async (req, res) => {
                     }));
                 })
                 .flat();
-                if(req.io){
-            req.io.to(loggedInUserId.toString()).emit("onlineUsers", response);}
+            //     if(req.io){
+            // req.io.to(loggedInUserId.toString()).emit("onlineUsers", response);}
             return res.json(response);
         }
         else {
@@ -278,8 +278,8 @@ router.get('/user', authoriseuser, async (req, res) => {
                 ...user.toObject(),
                 receiver: user._id
             }));
-            if(req.io){
-            req.io.to(loggedInUserId.toString()).emit("onlineUsers", updatedUsers);}
+            // if(req.io){
+            // req.io.to(loggedInUserId.toString()).emit("onlineUsers", updatedUsers);}
             res.json(updatedUsers);
         }
 
