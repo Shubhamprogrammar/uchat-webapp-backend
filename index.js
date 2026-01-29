@@ -40,50 +40,42 @@ app.use('/api/admin', require('./routes/admin'));
 
 const PORT = process.env.PORT || 5000;
 
-/* ------------ SOCKET LOGIC ------------- */
-io.on('connection', (socket) => {
-  console.log(`User connected: ${socket.id}`);
+io.on("connection", (socket) => {
+  console.log("Socket connected:", socket.id);
 
-  // When a user joins (from frontend)
-  socket.on("userOnline", (userId) => {
-    global.onlineUsers.set(userId, socket.id);
-    io.emit("onlineUsers", Array.from(onlineUsers.keys())); // Send updated list
-  });
-
-    socket.on("joinUser", (userId) => {
+  // SINGLE SOURCE OF TRUTH
+  socket.on("joinUser", (userId) => {
     socket.join(userId);
-  });
-  
-  // Join conversation room
-  socket.on('joinConversation', (conversationId) => {
-    socket.join(conversationId);
+    global.onlineUsers.set(userId, socket.id);
+
+    // Send updated online users list
+    io.emit("onlineUsers", Array.from(global.onlineUsers.keys()));
   });
 
-  // Private messaging
-  // socket.on('sendMessage', (data) => {
-  //   io.to(data.conversationId).emit('receiveMessage', data);
-  // });
-
-  // Broadcast Announcements
+  // 🔊 Broadcast announcements
   socket.on("sendAnnouncement", (message) => {
     io.emit("receiveAnnouncement", message);
   });
 
-  // When user disconnects
-  socket.on('disconnect', () => {
-    console.log(`User disconnected: ${socket.id}`);
+  socket.on("disconnect", () => {
+    console.log("Socket disconnected:", socket.id);
 
-    // Remove offline user from map
-    for (let [userId, sockId] of onlineUsers.entries()) {
+    let disconnectedUserId = null;
+
+    for (let [userId, sockId] of global.onlineUsers.entries()) {
       if (sockId === socket.id) {
-        onlineUsers.delete(userId);
+        disconnectedUserId = userId;
+        global.onlineUsers.delete(userId);
         break;
       }
     }
 
-    io.emit("onlineUsers", Array.from(onlineUsers.keys())); // update list
+    if (disconnectedUserId) {
+      io.emit("onlineUsers", Array.from(global.onlineUsers.keys()));
+    }
   });
 });
+
 
 app.get('/', (req, res) => {
   res.send("U-Chat Backend Running Successfully");

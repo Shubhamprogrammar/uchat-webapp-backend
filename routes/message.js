@@ -9,18 +9,16 @@ const router = express.Router();
 const mongoose = require("mongoose");
 
 
-
-
 router.post("/send-message", authoriseuser, async (req, res) => {
     try {
         const { receiverId, text, mediaUrl, messageType } = req.body;
 
         const senderId = req.user.id;
-        console.log("Receiver ID:", receiverId);
+        
         if (!receiverId || !senderId || (!text && !mediaUrl)) {
             return res.status(400).json({ message: "Required fields missing" });
         }
-        
+
         // Validate message content
         if ((!text || text.trim() === "") && (!mediaUrl || mediaUrl.trim() === "")) {
             return res.status(400).json({ message: "Message must contain text or media" });
@@ -32,8 +30,6 @@ router.post("/send-message", authoriseuser, async (req, res) => {
             return res.status(400).json({ message: "Invalid message type" });
         }
 
-        
-        
         // Find or create a conversation between sender and receiver
         let conversation = await Conversation.findOne({
             participants: { $all: [senderId, receiverId] },
@@ -44,6 +40,7 @@ router.post("/send-message", authoriseuser, async (req, res) => {
         if (!conversation) {
             conversation = new Conversation({
                 participants: [senderId, receiverId],
+                lastMessage: text || "Media",
             });
             await conversation.save();
         }
@@ -65,21 +62,20 @@ router.post("/send-message", authoriseuser, async (req, res) => {
 
         // Emit message via Socket.IO
         if (req.io) {
-            if (isNewConversation) {
-                const receiverSocketId = global.onlineUsers.get(receiverId);
-
-                if (receiverSocketId) {
-                    req.io.to(receiverSocketId).emit("receiveMessage", message);
-                }
-            } else {
-                req.io.to(conversation._id.toString()).emit("receiveMessage", message);
-            }
+            const payload = {
+                ...message.toObject(),
+                conversationId: conversation._id,
+                isNewConversation,
+            };
+            req.io.to(senderId.toString()).emit("receiveMessage", payload);
+            req.io.to(receiverId.toString()).emit("receiveMessage", payload);
         }
 
         res.status(200).json({
             message: "Message sent successfully",
             data: message,
             conversationId: conversation._id,
+            isNewConversation,
         });
     } catch (err) {
         console.error(err);
@@ -99,14 +95,13 @@ router.get("/get-messages/:receiverId", authoriseuser, async (req, res) => {
         const conversation = await Conversation.findOne({
             participants: { $all: [userId, receiverId] },
         });
-
         if (!conversation) {
             return res.status(200).json({ messages: [], message: "No conversation found" });
         }
 
         // Fetch messages in that conversation
         const messages = await Message.find({ conversationId: conversation._id, is_deleted: false })
-        
+
             .sort({ createdAt: 1 });
 
         res.status(200).json({

@@ -160,7 +160,7 @@ router.put("/update-profile", authoriseuser, async (req, res) => {
 router.patch("/update-status", authoriseuser, async (req, res) => {
     try {
         const { userId, action } = req.body;
-        
+
 
         if (!userId || !action) {
             return res.status(400).json({ message: "userId and action are required" });
@@ -206,9 +206,8 @@ router.get('/user', authoriseuser, async (req, res) => {
     try {
         const { search } = req.query;
 
-        console.log("Query Params:", req.query);
-        const loggedInUserId = req.user.id; // from middleware
-        
+        const loggedInUserId = req.user.id; 
+
 
         const user = await User.findById(loggedInUserId).select("gender");
 
@@ -216,19 +215,17 @@ router.get('/user', authoriseuser, async (req, res) => {
             participants: loggedInUserId
         }).select("participants lastMessage");
 
-        if(search){
+        if (search) {
             const searchRegex = search ? new RegExp(search, "i") : null;
-            const user = await User.find({ _id: { $ne: loggedInUserId }, is_deleted: false}).select("username name gender");
-                response = user.filter(user =>
-                    searchRegex.test(user.username) || searchRegex.test(user.name)
-                );
-                console.log("Filtered Users:", response);
-                return res.json(response);
+            const user = await User.find({ _id: { $ne: loggedInUserId }, is_deleted: false }).select("username name gender");
+            response = user.filter(user =>
+                searchRegex.test(user.username) || searchRegex.test(user.name)
+            );
+            return res.json(response);
         }
         if (Array.isArray(existingConversation) && existingConversation.length > 0) {
             const mapped = existingConversation.map(conv => {
                 const otherUserId = conv.participants.find(id => id.toString() !== loggedInUserId.toString());
-                console.log("Other User ID:", otherUserId);
                 return {
                     userId: otherUserId,
                     conversationId: conv._id,
@@ -252,34 +249,23 @@ router.get('/user', authoriseuser, async (req, res) => {
                     }));
                 })
                 .flat();
-            //     if(req.io){
-            // req.io.to(loggedInUserId.toString()).emit("onlineUsers", response);}
             return res.json(response);
         }
         else {
             let filter = {
                 is_deleted: false,
                 is_blocked: false,
-                gender:user.gender,
-                _id: { $ne: loggedInUserId } // exclude self
+                gender: user.gender,
+                _id: { $ne: loggedInUserId }
             };
 
-            // // search filter
-            // if (search) {
-            //     filter.$or = [
-            //         { username: { $regex: search, $options: "i" } },
-            //         { name: { $regex: search, $options: "i" } }
-            //     ];
-            // }
-            console.log("Filter for users:", filter);
+
+            
             const users = await User.find(filter).select("_id username name gender").limit(10);
-            // io.to(loggedInUserId.toString()).emit("user_list", users);
             const updatedUsers = users.map(user => ({
                 ...user.toObject(),
                 receiver: user._id
             }));
-            // if(req.io){
-            // req.io.to(loggedInUserId.toString()).emit("onlineUsers", updatedUsers);}
             res.json(updatedUsers);
         }
 
