@@ -52,6 +52,7 @@ router.post("/send-message", authoriseuser, async (req, res) => {
             receiver: receiverId,
             text,
             mediaUrl,
+            isSeen:false,
             messageType: messageType || "text",
         });
         await message.save();
@@ -60,6 +61,8 @@ router.post("/send-message", authoriseuser, async (req, res) => {
         conversation.lastMessage = text || "Media";
         await conversation.save();
 
+
+        
         // Emit message via Socket.IO
         if (req.io) {
             const payload = {
@@ -69,6 +72,16 @@ router.post("/send-message", authoriseuser, async (req, res) => {
             };
             req.io.to(senderId.toString()).emit("receiveMessage", payload);
             req.io.to(receiverId.toString()).emit("receiveMessage", payload);
+
+             const receiverSocketId = onlineUsers.get(receiverId);
+
+      if (receiverSocketId) {
+        req.io.to(receiverSocketId).emit("newUnreadMessage", {
+          conversationId: conversation._id,
+          senderId,
+          text: text || "Media",
+        });
+      }
         }
 
         res.status(200).json({
@@ -103,11 +116,12 @@ router.get("/get-messages/:receiverId", authoriseuser, async (req, res) => {
         const messages = await Message.find({ conversationId: conversation._id, is_deleted: false })
 
             .sort({ createdAt: 1 });
-
+// console.log("messages",messages)
         res.status(200).json({
             conversationId: conversation._id,
             messages,
         });
+
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: "Server error" });

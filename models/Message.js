@@ -7,7 +7,7 @@ const messageSchema = new mongoose.Schema({
   text: { type: String, required: true },
   mediaUrl: String,
   messageType: { type: String, enum: ["text", "image", "file"], default: "text" },
-  seen: { type: Boolean, default: false },
+  isSeen: { type: Boolean, default: false },
   is_deleted: { type: Boolean, default: false },
 }, { timestamps: true });
 
