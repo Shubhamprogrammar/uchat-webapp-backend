@@ -19,7 +19,7 @@ const httpServer = http.createServer(app);
 // Create Socket instance
 const io = new Server(httpServer, {
   cors: {
-    origin: ["http://localhost:5173/",
+    origin: ["http://localhost:5173",
       "https://uchat-webapp.vercel.app"
     ],
     methods: ["GET", "POST"]
@@ -43,38 +43,25 @@ app.use('/api/admin', require('./routes/admin'));
 const PORT = process.env.PORT || 5000;
 
 io.on("connection", (socket) => {
-  console.log("Socket connected:", socket.id);
+  const userId = socket.handshake.auth?.userId;
 
-  // SINGLE SOURCE OF TRUTH
-  socket.on("joinUser", (userId) => {
-    socket.join(userId);
-    global.onlineUsers.set(userId, socket.id);
+  if (!userId) {
+    socket.disconnect();
+    return;
+  }
 
-    // Send updated online users list
-    io.emit("onlineUsers", Array.from(global.onlineUsers.keys()));
-  });
+  console.log("Socket connected for user:", userId);
 
-  // 🔊 Broadcast announcements
-  socket.on("sendAnnouncement", (message) => {
-    io.emit("receiveAnnouncement", message);
-  });
+  socket.join(userId.toString());
+
+  global.onlineUsers.set(userId.toString(), socket.id);
+
+  io.emit("onlineUsers", Array.from(global.onlineUsers.keys()));
 
   socket.on("disconnect", () => {
-    console.log("Socket disconnected:", socket.id);
-
-    let disconnectedUserId = null;
-
-    for (let [userId, sockId] of global.onlineUsers.entries()) {
-      if (sockId === socket.id) {
-        disconnectedUserId = userId;
-        global.onlineUsers.delete(userId);
-        break;
-      }
-    }
-
-    if (disconnectedUserId) {
-      io.emit("onlineUsers", Array.from(global.onlineUsers.keys()));
-    }
+    global.onlineUsers.delete(userId.toString());
+    io.emit("onlineUsers", Array.from(global.onlineUsers.keys()));
+    console.log("Socket disconnected:", userId);
   });
 });
 
