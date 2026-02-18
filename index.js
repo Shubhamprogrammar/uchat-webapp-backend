@@ -5,6 +5,10 @@ const path = require('path');
 const connectToMongo = require('./models/config');
 const http = require('http');
 const { Server } = require('socket.io');
+const socketAuth=require('./middleware/socketMiddleware');
+const Conversation=require('./models/Conversation');
+const Message=require('./models/Message');
+const {handleMarkSeen,handleSendMessage}=require('./sockets/socket');
 
 dotenv.config();
 connectToMongo();
@@ -28,6 +32,7 @@ const io = new Server(httpServer, {
 
 // Store Online Users Globally
 global.onlineUsers = new Map();
+global.activeConversations = new Map();
 
 // Make io available inside routes
 app.use((req, res, next) => {
@@ -42,8 +47,13 @@ app.use('/api/admin', require('./routes/admin'));
 
 const PORT = process.env.PORT || 5000;
 
+
+io.use(socketAuth);
+
 io.on("connection", (socket) => {
-  const userId = socket.handshake.auth?.userId;
+  
+  const userId = socket.user.id;
+  
 
   if (!userId) {
     socket.disconnect();
@@ -56,11 +66,50 @@ io.on("connection", (socket) => {
 
   global.onlineUsers.set(userId.toString(), socket.id);
 
+  activeConversations.set(userId.toString(), null);
+
+  socket.emit("sync-active-chat");
+
+  socket.on("send-message",(payload)=>{
+    handleSendMessage(io,socket,payload);
+    console.log("Received send-message:", payload);
+  })
+
+    socket.on("mark-seen", (payload) => {
+    handleMarkSeen(io, socket, payload);
+  });
+
+ socket.on("active-chat", async (conversationId) => {
+    try {
+      if (!conversationId) return;
+
+      activeConversations.set(userId.toString(), conversationId);
+
+      // 🔥 Mark all unseen messages as seen
+      await Message.updateMany(
+        { conversationId, receiver: userId, isSeen: false },
+        { $set: { isSeen: true } }
+      );
+
+      // 🔥 Reset unread count in DB
+      await Conversation.updateOne(
+        { _id: conversationId },
+        { $set: { [`unreadCount.${userId}`]: 0 } }
+      );
+
+      socket.emit("unread-reset", { conversationId });
+       } catch (err) {
+      console.error("active-chat error:", err);
+    }
+  });
+
+
   io.emit("onlineUsers", Array.from(global.onlineUsers.keys()));
 
   socket.on("disconnect", () => {
     global.onlineUsers.delete(userId.toString());
     io.emit("onlineUsers", Array.from(global.onlineUsers.keys()));
+    activeConversations.delete(userId.toString());
     console.log("Socket disconnected:", userId);
   });
 });
