@@ -47,7 +47,6 @@ app.use('/api/admin', require('./routes/admin'));
 
 const PORT = process.env.PORT || 5000;
 
-
 io.use(socketAuth);
 
 io.on("connection", (socket) => {
@@ -63,9 +62,6 @@ io.on("connection", (socket) => {
   console.log("Socket connected for user:", userId);
 
   socket.join(userId.toString());
-
-  console.log("[ROOM JOIN]", userId, socket.id);
-
 
   global.onlineUsers.set(userId.toString(), socket.id);
 
