@@ -84,13 +84,11 @@ io.on("connection", (socket) => {
 
       activeConversations.set(userId.toString(), conversationId);
 
-      // 🔥 Mark all unseen messages as seen
       await Message.updateMany(
         { conversationId, receiver: userId, isSeen: false },
         { $set: { isSeen: true } }
       );
 
-      // 🔥 Reset unread count in DB
       await Conversation.updateOne(
         { _id: conversationId },
         { $set: { [`unreadCount.${userId}`]: 0 } }
