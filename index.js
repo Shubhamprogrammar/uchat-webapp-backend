@@ -64,6 +64,9 @@ io.on("connection", (socket) => {
 
   socket.join(userId.toString());
 
+  console.log("[ROOM JOIN]", userId, socket.id);
+
+
   global.onlineUsers.set(userId.toString(), socket.id);
 
   activeConversations.set(userId.toString(), null);
