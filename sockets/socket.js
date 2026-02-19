@@ -61,6 +61,7 @@ const handleSendMessage = async(io,socket,payload)=>{
     io.to(receiverId.toString()).emit("receiveMessage", payloadToEmit);
 
     socket.emit("send-success", payloadToEmit);
+    console.log("payloadToemit",payloadToEmit);
 
   } catch (err) {
     console.error("Socket send-message error:", err);
