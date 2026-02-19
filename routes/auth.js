@@ -6,7 +6,7 @@ const Place = require("../models/Place");
 const Otp = require("../models/Otp");
 const twilio = require("twilio");
 const jwt = require("jsonwebtoken");
-const authoriseuser = require("../middleware/authoriseuser");
+const authoriseuser = require("../middleware/authMiddleware");
 require("dotenv").config();
 
 const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
@@ -208,12 +208,11 @@ router.get('/user', authoriseuser, async (req, res) => {
 
         const loggedInUserId = req.user.id; 
 
-
         const user = await User.findById(loggedInUserId).select("gender");
 
         const existingConversation = await Conversation.find({
             participants: loggedInUserId
-        }).select("participants lastMessage");
+        }).select("participants lastMessage unreadCount");
 
         if (search) {
             const searchRegex = search ? new RegExp(search, "i") : null;
@@ -229,7 +228,8 @@ router.get('/user', authoriseuser, async (req, res) => {
                 return {
                     userId: otherUserId,
                     conversationId: conv._id,
-                    lastMessage: conv.lastMessage
+                    lastMessage: conv.lastMessage,
+                    unreadCount: conv.unreadCount?.get(loggedInUserId.toString()) || 0
                 };
             })
 
@@ -245,7 +245,8 @@ router.get('/user', authoriseuser, async (req, res) => {
                         ...user.toObject(),
                         receiver: match.userId,
                         conversationId: match.conversationId,
-                        lastMessage: match.lastMessage
+                        lastMessage: match.lastMessage,
+                        unreadCount: match.unreadCount
                     }));
                 })
                 .flat();
@@ -259,12 +260,11 @@ router.get('/user', authoriseuser, async (req, res) => {
                 _id: { $ne: loggedInUserId }
             };
 
-
-            
             const users = await User.find(filter).select("_id username name gender").limit(10);
             const updatedUsers = users.map(user => ({
                 ...user.toObject(),
-                receiver: user._id
+                receiver: user._id,
+                 unreadCount: 0
             }));
             res.json(updatedUsers);
         }

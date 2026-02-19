@@ -2,99 +2,11 @@ const express = require("express");
 const Message = require("../models/Message.js");
 const Conversation = require("../models/Conversation.js");
 const User = require("../models/User.js");
-const authoriseuser = require("../middleware/authoriseuser");
+const authoriseuser = require("../middleware/authMiddleware.js");
 
 const router = express.Router();
 
 const mongoose = require("mongoose");
-
-
-router.post("/send-message", authoriseuser, async (req, res) => {
-    try {
-        const { receiverId, text, mediaUrl, messageType } = req.body;
-
-        const senderId = req.user.id;
-        
-        if (!receiverId || !senderId || (!text && !mediaUrl)) {
-            return res.status(400).json({ message: "Required fields missing" });
-        }
-
-        // Validate message content
-        if ((!text || text.trim() === "") && (!mediaUrl || mediaUrl.trim() === "")) {
-            return res.status(400).json({ message: "Message must contain text or media" });
-        }
-
-        // Validate message type
-        const allowedTypes = ["text", "image", "file"];
-        if (messageType && !allowedTypes.includes(messageType)) {
-            return res.status(400).json({ message: "Invalid message type" });
-        }
-
-        // Find or create a conversation between sender and receiver
-        let conversation = await Conversation.findOne({
-            participants: { $all: [senderId, receiverId] },
-        });
-
-        const isNewConversation = !conversation;
-
-        if (!conversation) {
-            conversation = new Conversation({
-                participants: [senderId, receiverId],
-                lastMessage: text || "Media",
-            });
-            await conversation.save();
-        }
-
-        // Save message
-        const message = new Message({
-            conversationId: conversation._id,
-            sender: senderId,
-            receiver: receiverId,
-            text,
-            mediaUrl,
-            isSeen:false,
-            messageType: messageType || "text",
-        });
-        await message.save();
-
-        // Update last message
-        conversation.lastMessage = text || "Media";
-        await conversation.save();
-
-
-        
-        // Emit message via Socket.IO
-        if (req.io) {
-            const payload = {
-                ...message.toObject(),
-                conversationId: conversation._id,
-                isNewConversation,
-            };
-            req.io.to(senderId.toString()).emit("receiveMessage", payload);
-            req.io.to(receiverId.toString()).emit("receiveMessage", payload);
-
-             const receiverSocketId = onlineUsers.get(receiverId);
-
-      if (receiverSocketId) {
-        req.io.to(receiverSocketId).emit("newUnreadMessage", {
-          conversationId: conversation._id,
-          senderId,
-          text: text || "Media",
-        });
-      }
-        }
-
-        res.status(200).json({
-            message: "Message sent successfully",
-            data: message,
-            conversationId: conversation._id,
-            isNewConversation,
-        });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Server error" });
-    }
-});
 
 router.get("/get-messages/:receiverId", authoriseuser, async (req, res) => {
     try {
@@ -116,7 +28,8 @@ router.get("/get-messages/:receiverId", authoriseuser, async (req, res) => {
         const messages = await Message.find({ conversationId: conversation._id, is_deleted: false })
 
             .sort({ createdAt: 1 });
-// console.log("messages",messages)
+
+
         res.status(200).json({
             conversationId: conversation._id,
             messages,
@@ -127,6 +40,23 @@ router.get("/get-messages/:receiverId", authoriseuser, async (req, res) => {
         res.status(500).json({ message: "Server error" });
     }
 });
+
+router.get('/unread', authoriseuser, async (req, res) => {
+
+    try {
+        const userId = req.user.id;
+        if (!userId) return
+        const unread = await Message.find({ receiver: userId, isSeen: false })
+            .select('text sender');
+        res.status(200).json({
+            message: "unread message fetch successfully",
+            unread: unread
+        })
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ message: "Server error" });
+    }
+})
 
 router.get("/chat-list", authoriseuser, async (req, res) => {
     try {

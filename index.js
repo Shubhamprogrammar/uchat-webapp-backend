@@ -5,6 +5,10 @@ const path = require('path');
 const connectToMongo = require('./models/config');
 const http = require('http');
 const { Server } = require('socket.io');
+const socketAuth=require('./middleware/socketMiddleware');
+const Conversation=require('./models/Conversation');
+const Message=require('./models/Message');
+const {handleMarkSeen,handleSendMessage}=require('./sockets/socket');
 
 dotenv.config();
 connectToMongo();
@@ -28,6 +32,7 @@ const io = new Server(httpServer, {
 
 // Store Online Users Globally
 global.onlineUsers = new Map();
+global.activeConversations = new Map();
 
 // Make io available inside routes
 app.use((req, res, next) => {
@@ -42,39 +47,70 @@ app.use('/api/admin', require('./routes/admin'));
 
 const PORT = process.env.PORT || 5000;
 
+
+io.use(socketAuth);
+
 io.on("connection", (socket) => {
-  console.log("Socket connected:", socket.id);
+  
+  const userId = socket.user.id;
+  
 
-  // SINGLE SOURCE OF TRUTH
-  socket.on("joinUser", (userId) => {
-    socket.join(userId);
-    global.onlineUsers.set(userId, socket.id);
+  if (!userId) {
+    socket.disconnect();
+    return;
+  }
 
-    // Send updated online users list
-    io.emit("onlineUsers", Array.from(global.onlineUsers.keys()));
+  console.log("Socket connected for user:", userId);
+
+  socket.join(userId.toString());
+
+  global.onlineUsers.set(userId.toString(), socket.id);
+
+  activeConversations.set(userId.toString(), null);
+
+  socket.emit("sync-active-chat");
+
+  socket.on("send-message",(payload)=>{
+    handleSendMessage(io,socket,payload);
+    console.log("Received send-message:", payload);
+  })
+
+    socket.on("mark-seen", (payload) => {
+    handleMarkSeen(io, socket, payload);
   });
 
-  // 🔊 Broadcast announcements
-  socket.on("sendAnnouncement", (message) => {
-    io.emit("receiveAnnouncement", message);
+ socket.on("active-chat", async (conversationId) => {
+    try {
+      if (!conversationId) return;
+
+      activeConversations.set(userId.toString(), conversationId);
+
+      // 🔥 Mark all unseen messages as seen
+      await Message.updateMany(
+        { conversationId, receiver: userId, isSeen: false },
+        { $set: { isSeen: true } }
+      );
+
+      // 🔥 Reset unread count in DB
+      await Conversation.updateOne(
+        { _id: conversationId },
+        { $set: { [`unreadCount.${userId}`]: 0 } }
+      );
+
+      socket.emit("unread-reset", { conversationId });
+       } catch (err) {
+      console.error("active-chat error:", err);
+    }
   });
+
+
+  io.emit("onlineUsers", Array.from(global.onlineUsers.keys()));
 
   socket.on("disconnect", () => {
-    console.log("Socket disconnected:", socket.id);
-
-    let disconnectedUserId = null;
-
-    for (let [userId, sockId] of global.onlineUsers.entries()) {
-      if (sockId === socket.id) {
-        disconnectedUserId = userId;
-        global.onlineUsers.delete(userId);
-        break;
-      }
-    }
-
-    if (disconnectedUserId) {
-      io.emit("onlineUsers", Array.from(global.onlineUsers.keys()));
-    }
+    global.onlineUsers.delete(userId.toString());
+    io.emit("onlineUsers", Array.from(global.onlineUsers.keys()));
+    activeConversations.delete(userId.toString());
+    console.log("Socket disconnected:", userId);
   });
 });
 
