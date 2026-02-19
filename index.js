@@ -19,7 +19,7 @@ const httpServer = http.createServer(app);
 // Create Socket instance
 const io = new Server(httpServer, {
   cors: {
-    origin: ["http://localhost:5173/",
+    origin: ["http://localhost:5173",
       "https://uchat-webapp.vercel.app"
     ],
     methods: ["GET", "POST"]
