@@ -5,10 +5,10 @@ const path = require('path');
 const connectToMongo = require('./models/config');
 const http = require('http');
 const { Server } = require('socket.io');
-const socketAuth=require('./middleware/socketMiddleware');
-const Conversation=require('./models/Conversation');
-const Message=require('./models/Message');
-const {handleMarkSeen,handleSendMessage}=require('./sockets/socket');
+const socketAuth = require('./middleware/socketMiddleware');
+const Conversation = require('./models/Conversation');
+const Message = require('./models/Message');
+const { handleMarkSeen, handleSendMessage } = require('./sockets/socket');
 
 dotenv.config();
 connectToMongo();
@@ -50,9 +50,9 @@ const PORT = process.env.PORT || 5000;
 io.use(socketAuth);
 
 io.on("connection", (socket) => {
-  
+
   const userId = socket.user.id;
-  
+
 
   if (!userId) {
     socket.disconnect();
@@ -69,16 +69,16 @@ io.on("connection", (socket) => {
 
   socket.emit("sync-active-chat");
 
-  socket.on("send-message",(payload)=>{
-    handleSendMessage(io,socket,payload);
+  socket.on("send-message", (payload) => {
+    handleSendMessage(io, socket, payload);
     console.log("Received send-message:", payload);
   })
 
-    socket.on("mark-seen", (payload) => {
+  socket.on("mark-seen", (payload) => {
     handleMarkSeen(io, socket, payload);
   });
 
- socket.on("active-chat", async (conversationId) => {
+  socket.on("active-chat", async (conversationId) => {
     try {
       if (!conversationId) return;
 
@@ -95,7 +95,7 @@ io.on("connection", (socket) => {
       );
 
       socket.emit("unread-reset", { conversationId });
-       } catch (err) {
+    } catch (err) {
       console.error("active-chat error:", err);
     }
   });
