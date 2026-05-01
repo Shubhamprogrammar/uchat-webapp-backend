@@ -1,0 +1,157 @@
+const User = require("../models/User");
+const Conversation = require("../models/Conversation");
+const Otp = require("../models/Otp");
+const twilio = require("twilio");
+const jwt = require("jsonwebtoken");
+
+const client = twilio(
+  process.env.TWILIO_ACCOUNT_SID,
+  process.env.TWILIO_AUTH_TOKEN
+);
+
+// SEND OTP
+exports.sendOtp = async (req, res) => {
+  try {
+    const { mobile, label } = req.body;
+
+    if (label === "login") {
+      const user = await User.findOne({ mobile });
+      if (!user) {
+        return res.status(400).json({
+          message: "User not found, signup first"
+        });
+      }
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    await Otp.create({ mobile, otp });
+
+    await client.messages.create({
+      body: `Your OTP is ${otp}`,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to: mobile.startsWith("+") ? mobile : `+91${mobile}`
+    });
+
+    res.json({ message: "OTP sent successfully" });
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// VERIFY OTP
+exports.verifyOtp = async (req, res) => {
+  try {
+    const { name, mobile, gender, dob, username, otp, label } = req.body;
+
+    const validOtp = await Otp.findOne({ mobile, otp });
+
+    if (!validOtp) {
+      return res.status(400).json({
+        message: "Invalid OTP"
+      });
+    }
+
+    let user;
+
+    if (label === "signup") {
+      user = await User.create({
+        name,
+        mobile,
+        gender,
+        dob,
+        username
+      });
+    } else {
+      user = await User.findOne({ mobile });
+    }
+
+    const token = jwt.sign(
+      { id: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    await Otp.deleteMany({ mobile });
+
+    res.json({
+      message: "Success",
+      user,
+      token
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// UPDATE PROFILE
+exports.updateProfile = async (req, res) => {
+  try {
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.id,
+      req.body,
+      { new: true }
+    );
+
+    res.json(updatedUser);
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// UPDATE STATUS
+exports.updateStatus = async (req, res) => {
+  try {
+    const { userId, action } = req.body;
+
+    let update = {};
+
+    if (action === "block") update.is_blocked = true;
+    if (action === "unblock") update.is_blocked = false;
+    if (action === "delete") update.is_deleted = true;
+    if (action === "restore") update.is_deleted = false;
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      update,
+      { new: true }
+    );
+
+    res.json({
+      message: "Status updated",
+      user
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// GET USERS
+exports.getUsers = async (req, res) => {
+  try {
+    const users = await User.find({
+      _id: { $ne: req.user.id }
+    }).select("name username gender");
+
+    res.json(users);
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// SELF USER
+exports.getSelfUser = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+
+    res.json(user);
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
