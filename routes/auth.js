@@ -8,7 +8,8 @@ const {
   updateProfile,
   updateStatus,
   getUsers,
-  getSelfUser
+  getSelfUser,
+  getUserById
 } = require("../controllers/authController");
 
 router.post("/send-otp", sendOtp);
@@ -19,5 +20,6 @@ router.patch("/update-status", authoriseuser, updateStatus);
 
 router.get("/user", authoriseuser, getUsers);
 router.get("/self-user", authoriseuser, getSelfUser);
+router.get("/user/:id", authoriseuser, getUserById);
 
 module.exports = router;

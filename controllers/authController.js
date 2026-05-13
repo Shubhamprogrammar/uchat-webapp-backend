@@ -56,6 +56,15 @@ exports.verifyOtp = async (req, res) => {
     let user;
 
     if (label === "signup") {
+      // Prevent duplicate accounts with same mobile
+      const existingUser = await User.findOne({ mobile });
+      if (existingUser) {
+        await Otp.deleteMany({ mobile });
+        return res.status(400).json({
+          message: "User with this mobile number already exists. Please login instead."
+        });
+      }
+
       user = await User.create({
         name,
         mobile,
@@ -133,12 +142,101 @@ exports.updateStatus = async (req, res) => {
 // GET USERS
 exports.getUsers = async (req, res) => {
   try {
-    const users = await User.find({
-      _id: { $ne: req.user.id }
-    }).select("name username gender");
+    const userId = req.user.id;
+    const search = req.query.search;
 
-    res.json(users);
+    if (search && search.trim()) {
+      // SEARCH MODE: find users matching name or username
+      const regex = new RegExp(search.trim(), "i");
+      const matchedUsers = await User.find({
+        _id: { $ne: userId },
+        is_deleted: { $ne: true },
+        $or: [{ name: regex }, { username: regex }],
+      }).select("name username gender photo about");
 
+      // Enrich with conversation data
+      const enriched = await Promise.all(
+        matchedUsers.map(async (u) => {
+          const convo = await Conversation.findOne({
+            participants: { $all: [userId, u._id] },
+          });
+          return {
+            _id: u._id,
+            name: u.name,
+            username: u.username,
+            gender: u.gender,
+            photo: u.photo,
+            about: u.about,
+            receiver: u._id,
+            conversationId: convo?._id || null,
+            lastMessage: convo?.lastMessage || "",
+            unreadCount: convo?.unreadCount?.get(userId.toString()) || 0,
+          };
+        })
+      );
+
+      return res.json(enriched);
+    }
+
+    // CONTACT LIST MODE: return users with existing conversations
+    const conversations = await Conversation.find({
+      participants: userId,
+    }).sort({ updatedAt: -1 });
+
+    const contacts = await Promise.all(
+      conversations.map(async (convo) => {
+        const otherUserId = convo.participants.find(
+          (p) => p.toString() !== userId.toString()
+        );
+        const otherUser = await User.findById(otherUserId).select(
+          "name username gender photo about"
+        );
+        if (!otherUser) return null;
+        return {
+          _id: otherUser._id,
+          name: otherUser.name,
+          username: otherUser.username,
+          gender: otherUser.gender,
+          photo: otherUser.photo,
+          about: otherUser.about,
+          receiver: otherUser._id,
+          conversationId: convo._id,
+          lastMessage: convo.lastMessage || "",
+          unreadCount: convo.unreadCount?.get(userId.toString()) || 0,
+        };
+      })
+    );
+
+    const filteredContacts = contacts.filter(Boolean);
+
+    // NEW USER: if no conversations, suggest 10 users of the same gender
+    if (filteredContacts.length === 0) {
+      const currentUser = await User.findById(userId).select("gender");
+      const suggestions = await User.find({
+        _id: { $ne: userId },
+        is_deleted: { $ne: true },
+        gender: currentUser?.gender,
+      })
+        .select("name username gender photo about")
+        .limit(10);
+
+      const enriched = suggestions.map((u) => ({
+        _id: u._id,
+        name: u.name,
+        username: u.username,
+        gender: u.gender,
+        photo: u.photo,
+        about: u.about,
+        receiver: u._id,
+        conversationId: null,
+        lastMessage: "",
+        unreadCount: 0,
+      }));
+
+      return res.json(enriched);
+    }
+
+    res.json(filteredContacts);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -151,6 +249,17 @@ exports.getSelfUser = async (req, res) => {
 
     res.json(user);
 
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// GET USER BY ID
+exports.getUserById = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select("-password");
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.json(user);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
