@@ -1,39 +1,63 @@
 const User = require("../models/User");
 const Conversation = require("../models/Conversation");
 const Otp = require("../models/Otp");
-const twilio = require("twilio");
 const jwt = require("jsonwebtoken");
-
-const client = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
+const { sendOtpEmail } = require("../utils/emailService");
 
 // SEND OTP
 exports.sendOtp = async (req, res) => {
   try {
-    const { mobile, label } = req.body;
+    const { email, mobile, username, label } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
 
     if (label === "login") {
-      const user = await User.findOne({ mobile });
+      const user = await User.findOne({ email: normalizedEmail });
       if (!user) {
         return res.status(400).json({
-          message: "User not found, signup first"
+          message: "User not found with this email, signup first"
         });
+      }
+    } else if (label === "signup") {
+      // Prevent duplicate accounts with same email, mobile, or username
+      const existingEmail = await User.findOne({ email: normalizedEmail });
+      if (existingEmail) {
+        return res.status(400).json({
+          message: "User with this email already exists. Please login instead."
+        });
+      }
+
+      if (mobile) {
+        const existingMobile = await User.findOne({ mobile });
+        if (existingMobile) {
+          return res.status(400).json({
+            message: "User with this mobile number already exists."
+          });
+        }
+      }
+
+      if (username) {
+        const existingUsername = await User.findOne({ username });
+        if (existingUsername) {
+          return res.status(400).json({
+            message: "Username is already taken. Please choose another."
+          });
+        }
       }
     }
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    await Otp.create({ mobile, otp });
+    await Otp.deleteMany({ email: normalizedEmail });
+    await Otp.create({ email: normalizedEmail, otp });
 
-    await client.messages.create({
-      body: `Your OTP is ${otp}`,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to: mobile.startsWith("+") ? mobile : `+91${mobile}`
-    });
+    await sendOtpEmail(normalizedEmail, otp);
 
-    res.json({ message: "OTP sent successfully" });
+    res.json({ message: "OTP sent to your email successfully" });
 
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -43,37 +67,56 @@ exports.sendOtp = async (req, res) => {
 // VERIFY OTP
 exports.verifyOtp = async (req, res) => {
   try {
-    const { name, mobile, gender, dob, username, otp, label } = req.body;
+    const { name, email, mobile, gender, dob, username, otp, label } = req.body;
 
-    const validOtp = await Otp.findOne({ mobile, otp });
+    if (!email || !otp) {
+      return res.status(400).json({ message: "Email and OTP are required" });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const validOtp = await Otp.findOne({ email: normalizedEmail, otp });
 
     if (!validOtp) {
       return res.status(400).json({
-        message: "Invalid OTP"
+        message: "Invalid or expired OTP"
       });
     }
 
     let user;
 
     if (label === "signup") {
-      // Prevent duplicate accounts with same mobile
-      const existingUser = await User.findOne({ mobile });
-      if (existingUser) {
-        await Otp.deleteMany({ mobile });
+      // Double check duplicate accounts
+      const existingEmail = await User.findOne({ email: normalizedEmail });
+      if (existingEmail) {
+        await Otp.deleteMany({ email: normalizedEmail });
         return res.status(400).json({
-          message: "User with this mobile number already exists. Please login instead."
+          message: "User with this email already exists."
         });
+      }
+
+      if (mobile) {
+        const existingMobile = await User.findOne({ mobile });
+        if (existingMobile) {
+          await Otp.deleteMany({ email: normalizedEmail });
+          return res.status(400).json({
+            message: "User with this mobile number already exists."
+          });
+        }
       }
 
       user = await User.create({
         name,
+        email: normalizedEmail,
         mobile,
         gender,
         dob,
         username
       });
     } else {
-      user = await User.findOne({ mobile });
+      user = await User.findOne({ email: normalizedEmail });
+      if (!user) {
+        return res.status(400).json({ message: "User not found" });
+      }
     }
 
     const token = jwt.sign(
@@ -82,7 +125,7 @@ exports.verifyOtp = async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    await Otp.deleteMany({ mobile });
+    await Otp.deleteMany({ email: normalizedEmail });
 
     res.json({
       message: "Success",
