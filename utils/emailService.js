@@ -1,14 +1,25 @@
 const nodemailer = require("nodemailer");
 
 const createTransporter = () => {
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    throw new Error("SMTP credentials (SMTP_USER / SMTP_PASS) are not configured in environment variables.");
+  }
+
+  const port = parseInt(process.env.SMTP_PORT || "587");
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST || "smtp.gmail.com",
-    port: parseInt(process.env.SMTP_PORT || "587"),
-    secure: process.env.SMTP_PORT === "465", // true for 465, false for other ports
+    port: port,
+    secure: port === 465, // true for 465, false for 587
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
+    connectionTimeout: 8000, // 8s connection timeout
+    greetingTimeout: 8000,
+    socketTimeout: 10000,
+    tls: {
+      rejectUnauthorized: false
+    }
   });
 };
 
