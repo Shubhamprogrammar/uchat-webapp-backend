@@ -1,4 +1,5 @@
 const nodemailer = require("nodemailer");
+const dns = require("dns");
 
 const createTransporter = () => {
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
@@ -14,6 +15,8 @@ const createTransporter = () => {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
+    // Force IPv4 DNS resolution to avoid ENETUNREACH errors on hosts without IPv6
+    lookup: (hostname, options, callback) => dns.lookup(hostname, { family: 4 }, callback),
     connectionTimeout: 8000, // 8s connection timeout
     greetingTimeout: 8000,
     socketTimeout: 10000,
@@ -44,5 +47,14 @@ exports.sendOtpEmail = async (toEmail, otp) => {
     `,
   };
 
-  return await transporter.sendMail(mailOptions);
+  try {
+    return await transporter.sendMail(mailOptions);
+  } catch (err) {
+    // If IPv6 route was attempted and failed, retry using IPv4 explicitly
+    if (err && err.code === 'ENETUNREACH') {
+      const retryTransporter = createTransporter();
+      return await retryTransporter.sendMail(mailOptions);
+    }
+    throw err;
+  }
 };
