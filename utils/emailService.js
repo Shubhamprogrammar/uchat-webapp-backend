@@ -1,5 +1,18 @@
 const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 const dns = require("dns");
+
+// Resend sends over HTTPS (443), so it works from hosts that block outbound
+// SMTP ports (25/465/587) — the usual reason "works locally, fails in production".
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+
+if (resend) {
+  console.log("✅ Resend initialized for production email delivery");
+} else if (process.env.NODE_ENV === "production") {
+  console.warn(
+    "⚠️ WARNING: Running in production but RESEND_API_KEY is missing! Falling back to SMTP, which most hosts block."
+  );
+}
 
 const createTransporter = () => {
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
@@ -21,19 +34,60 @@ const createTransporter = () => {
     greetingTimeout: 8000,
     socketTimeout: 10000,
     tls: {
-      rejectUnauthorized: false
-    }
+      rejectUnauthorized: false,
+    },
   });
 };
 
-exports.sendOtpEmail = async (toEmail, otp) => {
-  const transporter = createTransporter();
+const defaultFrom =
+  process.env.SMTP_FROM || (process.env.SMTP_USER ? `"UChat" <${process.env.SMTP_USER}>` : "no-reply@uchat.com");
 
-  const mailOptions = {
-    from: process.env.SMTP_FROM || `"UChat" <${process.env.SMTP_USER}>`,
-    to: toEmail,
-    subject: "UChat Verification Code",
-    html: `
+/**
+ * Unified email sender: Resend (HTTP API) in production, Nodemailer/SMTP
+ * otherwise — and as a fallback if Resend errors.
+ */
+const sendEmail = async ({ to, subject, html, text, from }) => {
+  const sender = from || defaultFrom;
+
+  if (process.env.NODE_ENV === "production" && resend) {
+    try {
+      const { data, error } = await resend.emails.send({
+        from: sender,
+        to,
+        subject,
+        html,
+        text,
+      });
+      if (error) throw error;
+      console.log(`✅ Resend: Email sent to ${to} (id: ${data?.id})`);
+      return;
+    } catch (err) {
+      console.error("❌ Resend Error:", err.message || err);
+      console.log("🔄 Falling back to SMTP...");
+    }
+  }
+
+  const transporter = createTransporter();
+  const mailOptions = { from: sender, to, subject, html, text };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`✅ SMTP: Email sent to ${to}`);
+  } catch (err) {
+    // If IPv6 route was attempted and failed, retry using IPv4 explicitly
+    if (err && err.code === "ENETUNREACH") {
+      const retryTransporter = createTransporter();
+      await retryTransporter.sendMail(mailOptions);
+      console.log(`✅ SMTP (retry): Email sent to ${to}`);
+      return;
+    }
+    throw err;
+  }
+};
+
+exports.sendOtpEmail = async (toEmail, otp) => {
+  const subject = "UChat Verification Code";
+  const html = `
       <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; rounded: 10px;">
         <h2 style="color: #2563eb; text-align: center;">UChat Verification Code</h2>
         <p style="font-size: 16px; color: #333;">Your OTP verification code for UChat is:</p>
@@ -44,17 +98,7 @@ exports.sendOtpEmail = async (toEmail, otp) => {
         <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
         <p style="font-size: 12px; color: #999; text-align: center;">If you did not request this OTP, please ignore this email.</p>
       </div>
-    `,
-  };
+    `;
 
-  try {
-    return await transporter.sendMail(mailOptions);
-  } catch (err) {
-    // If IPv6 route was attempted and failed, retry using IPv4 explicitly
-    if (err && err.code === 'ENETUNREACH') {
-      const retryTransporter = createTransporter();
-      return await retryTransporter.sendMail(mailOptions);
-    }
-    throw err;
-  }
+  await sendEmail({ to: toEmail, subject, html });
 };
